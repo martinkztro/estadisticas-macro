@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
+import Papa from "papaparse";
 import {
   Upload,
   Button,
   Input,
   Table,
   Spin,
-  Alert,
   Space,
   Card,
   Collapse,
@@ -19,8 +19,10 @@ import {
   Tooltip,
   App,
   notification,
+  Modal, // usamos Modal.useModal() para evitar warnings
 } from "antd";
 import { UploadOutlined, InfoCircleOutlined } from "@ant-design/icons";
+import { procesarArchivoCSV } from "@/lib/procesarExcelJS";
 
 export default function Home() {
   const [file, setFile] = useState(null);
@@ -34,18 +36,13 @@ export default function Home() {
   const [nightTo, setNightTo] = useState("22:00");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
-  const [error, setError] = useState(null);
-  const [api, contextHolder] = notification.useNotification();
 
-  // Mostrar notificación única
+  const [api, contextHolder] = notification.useNotification();
+  const [modal, modalContextHolder] = Modal.useModal(); // ✅ modal con contexto
+
+  // ---------------- Helpers ----------------
   const showNotification = (type, message, description) => {
-    api.open({
-      type,
-      message,
-      description,
-      placement: "topRight",
-      duration: 3.5,
-    });
+    api.open({ type, message, description, placement: "topRight", duration: 3.5 });
   };
 
   const buildIntervals = () => {
@@ -56,87 +53,170 @@ export default function Home() {
     return ranges.join(",");
   };
 
+  // ------------- Procesar CSV -------------
   const handleUpload = async () => {
-    // Validaciones básicas
     if (!file) {
-      showNotification("warning", "Falta archivo", "Por favor, seleccione un archivo CSV o XLSX antes de continuar.");
+      showNotification("warning", "Falta archivo", "Selecciona un archivo CSV antes de continuar.");
       return;
     }
     if (!lanesNS && !lanesSN) {
-      showNotification("warning", "Faltan carriles", "Debe ingresar al menos un grupo de carriles (Norte→Sur o Sur→Norte).");
+      showNotification("warning", "Faltan carriles", "Debes ingresar al menos un grupo de carriles.");
       return;
     }
 
     setLoading(true);
-    setError(null);
     setResults([]);
 
-    const intervalsStr = buildIntervals();
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("lanes_ns", lanesNS);
-    formData.append("lanes_sn", lanesSN);
-    formData.append("intervals", intervalsStr);
-
     try {
-      const res = await fetch("/api/process", { method: "POST", body: formData });
-      const json = await res.json();
+      const lanesNSArr = lanesNS ? lanesNS.split(",").map((x) => parseInt(x.trim())) : [];
+      const lanesSNArr = lanesSN ? lanesSN.split(",").map((x) => parseInt(x.trim())) : [];
+      const intervalos = buildIntervals()
+        .split(",")
+        .filter(Boolean)
+        .map((r) => r.split("-").map((x) => x.trim()));
 
-      if (!res.ok) {
-        showNotification("error", "Error en procesamiento", json.error || "Error desconocido al procesar el archivo.");
-        setLoading(false);
-        return;
-      }
+      const data = await procesarArchivoCSV(file, lanesNSArr, lanesSNArr, intervalos);
+      setResults(data);
 
-      if (!json.data || json.data.length === 0) {
-        showNotification("info", "Sin resultados", "El archivo no contiene datos válidos para los criterios seleccionados.");
+      if (data.length === 0) {
+        showNotification("info", "Sin resultados", "No se generaron resultados con los filtros aplicados.");
       } else {
-        showNotification("success", "Archivo procesado", "Los datos fueron analizados correctamente.");
+        showNotification("success", "Procesamiento exitoso", "Los datos fueron analizados correctamente.");
       }
-
-      setResults(json.data || []);
-    } catch (e) {
-      showNotification(
-        "error",
-        "Error interno",
-        "Ocurrió un error inesperado. Contacte al desarrollador si el problema persiste."
-      );
-      console.error("Error:", e);
+    } catch (err) {
+      console.error(err);
+      showNotification("error", "Error al procesar", err.toString());
     } finally {
       setLoading(false);
     }
   };
 
+  // ------------- Exportar Excel con estilo (ExcelJS) -------------
   const downloadExcel = async () => {
-    if (!file) {
-      showNotification("warning", "Falta archivo", "Debe cargar un archivo antes de descargar el Excel.");
+    if (!results || results.length === 0) {
+      showNotification("info", "Sin datos", "No hay resultados para exportar.");
       return;
     }
 
-    const intervalsStr = buildIntervals();
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("lanes_ns", lanesNS);
-    formData.append("lanes_sn", lanesSN);
-    formData.append("intervals", intervalsStr);
+    let nombreArchivo = "";
 
-    try {
-      const res = await fetch("/api/process?format=xlsx", { method: "POST", body: formData });
-      if (!res.ok) {
-        showNotification("error", "Descarga fallida", "No se pudo generar el archivo Excel. Contacte al desarrollador.");
-        return;
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "resumen_intervalos.xlsx";
-      a.click();
-    } catch (e) {
-      showNotification("error", "Error de descarga", "Ocurrió un problema al descargar el archivo.");
-    }
+    modal.confirm({
+      title: "Guardar archivo Excel",
+      content: (
+        <Input
+          placeholder="Escribe el nombre del archivo (sin extensión)"
+          onChange={(e) => (nombreArchivo = e.target.value)}
+        />
+      ),
+      okText: "Descargar",
+      cancelText: "Cancelar",
+      centered: true,
+      onOk: async () => {
+        const ExcelJS = await import("exceljs"); // import dinámico compatible con Next
+
+        if (!nombreArchivo.trim()) nombreArchivo = "resumen_intervalos";
+
+        // Separar resultados por dirección
+        const ns = results.filter((r) => r.Dirección === "Norte → Sur");
+        const sn = results.filter((r) => r.Dirección === "Sur → Norte");
+
+        // Crear libro
+        const wb = new ExcelJS.Workbook();
+
+        // ---- Helpers locales para la exportación ----
+        const headers = ["Dirección", "Fecha", "Intervalo", "Carriles", "Total_vehiculos"];
+
+        const fechaKeyToMillis = (ddmmyyyy) => {
+          const [d, m, y] = ddmmyyyy.split("/").map(Number);
+          return new Date(y, m - 1, d).getTime();
+        };
+        const intervaloInicioMin = (intervalo) => {
+          const [ini] = intervalo.split("-");
+          const [h, mm] = ini.split(":").map(Number);
+          return h * 60 + mm;
+        };
+
+        const ordenar = (arr) =>
+          arr.slice().sort(
+            (a, b) =>
+              fechaKeyToMillis(a.Fecha) - fechaKeyToMillis(b.Fecha) ||
+              intervaloInicioMin(a.Intervalo) - intervaloInicioMin(b.Intervalo)
+          );
+
+        const thin = { style: "thin", color: { argb: "FF000000" } };
+
+        const buildSheet = (name, data) => {
+          const sorted = ordenar(data);
+          const ws = wb.addWorksheet(name);
+
+          // Crear Tabla
+          ws.addTable({
+            name: `${name.replace(/\W/g, "_")}_Table`,
+            ref: "A1",
+            headerRow: true,
+            columns: headers.map((h) => ({ name: h })),
+            rows: sorted.map((r) => [r.Dirección, r.Fecha, r.Intervalo, r.Carriles, r.Total_vehiculos]),
+            style: { theme: "TableStyleMedium9", showRowStripes: true },
+          });
+
+          // Bordes externos + línea divisoria cada 3 filas (como openpyxl)
+          const lastRow = sorted.length + 1; // +1 por encabezado
+          const lastCol = headers.length;
+
+          for (let r = 1; r <= lastRow; r++) {
+            for (let c = 1; c <= lastCol; c++) {
+              const cell = ws.getCell(r, c);
+              const border = { ...cell.border };
+
+              if (r === 1) border.top = thin;
+              if (r === lastRow) border.bottom = thin;
+              if (c === 1) border.left = thin;
+              if (c === lastCol) border.right = thin;
+
+              // línea divisoria inferior cada 3 filas de datos: filas 4,7,10,... (r>1 y (r-1)%3===0)
+              if (r > 1 && (r - 1) % 3 === 0) {
+                border.bottom = thin;
+              }
+
+              cell.border = border;
+
+              // Formato numérico para Total_vehiculos (col 5)
+              if (c === 5 && r > 1) {
+                cell.numFmt = "0";
+              }
+            }
+          }
+
+          // Ajuste de ancho de columnas (opcional)
+          const widths = [16, 12, 16, 14, 16];
+          ws.columns.forEach((col, i) => (col.width = widths[i] || 14));
+        };
+
+        if (ns.length) buildSheet("Norte_Sur", ns);
+        if (sn.length) buildSheet("Sur_Norte", sn);
+
+        // Descargar archivo
+        const buffer = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const fecha = new Date().toISOString().split("T")[0];
+        const nombreFinal = `${nombreArchivo.trim()}_${fecha}.xlsx`;
+
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = nombreFinal;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(link.href);
+
+        showNotification("success", "Excel generado", `Archivo guardado como "${nombreFinal}"`);
+      },
+    });
   };
 
+  // --------- Agrupar resultados para Collapse ---------
   const grouped = results.reduce((acc, item) => {
     const key = `${item.Dirección}-${item.Fecha}`;
     (acc[key] = acc[key] || []).push(item);
@@ -160,14 +240,16 @@ export default function Home() {
     { title: "FORJADORES - UNION", ns: "Carriles 1, 2 y 3 → Norte a Sur", sn: "Carriles 4, 5 y 6 → Sur a Norte" },
   ];
 
+  // ---------------- Render ----------------
   return (
     <App>
       {contextHolder}
+      {modalContextHolder}
+
       <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
         <Typography.Title level={3}>Procesar archivo de Tráfico</Typography.Title>
         <Typography.Paragraph type="secondary">
-          Suba un archivo CSV o XLSX con los datos de tráfico. Ingrese los carriles
-          y los rangos horarios que desea analizar.
+          El procesamiento se realiza directamente en tu navegador — sin depender del servidor.
         </Typography.Paragraph>
 
         <Card bordered size="default">
@@ -175,7 +257,7 @@ export default function Home() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item label="Archivo">
-                  <Upload beforeUpload={(f) => { setFile(f); return false; }} maxCount={1} accept=".csv,.xlsx">
+                  <Upload beforeUpload={(f) => { setFile(f); return false; }} maxCount={1} accept=".csv">
                     <Button icon={<UploadOutlined />}>Seleccionar archivo</Button>
                   </Upload>
                 </Form.Item>
@@ -224,7 +306,9 @@ export default function Home() {
               <Button type="primary" onClick={handleUpload} disabled={!file || loading}>
                 {loading ? <Spin /> : "Procesar"}
               </Button>
-              <Button onClick={downloadExcel} disabled={!file || loading}>Descargar Excel</Button>
+              <Button onClick={downloadExcel} disabled={!results || results.length === 0}>
+                Descargar Excel
+              </Button>
             </Space>
           </Form>
         </Card>
