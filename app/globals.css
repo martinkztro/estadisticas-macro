@@ -1,22 +1,162 @@
 @import "tailwindcss";
 
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary: #667eea;
+  --secondary: #764ba2;
 }
 
-/* Theme tokens (kept as standard CSS variables) */
-:root {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html, body {
+  width: 100%;
+  height: 100%;
 }
-
-/* Removed dark mode override so site always uses the light palette */
 
 body {
-  background: var(--background);
+  background: #f5f7fa;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Ant Design overrides */
+.ant-btn {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.ant-btn-primary {
+  background: #003366 !important;
+  border: none !important;
+  color: #ffffff !important;
+  height: 40px;
+  padding: 0 24px;
+  font-size: 15px;
+  box-shadow: 0 2px 8px rgba(0, 51, 102, 0.2);
+}
+
+.ant-btn-primary:hover {
+  background: #002244 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
+  transform: translateY(-1px);
+}
+
+.ant-btn-primary:active {
+  background: #001a33 !important;
+  color: #ffffff !important;
+  transform: translateY(0);
+}
+
+.ant-btn-primary:disabled {
+  background: #cccccc !important;
+  color: #999999 !important;
+  opacity: 0.7;
+}
+
+.ant-btn-default {
+  border-color: #003366 !important;
+  color: #003366 !important;
+  background: #ffffff;
+  height: 40px;
+  padding: 0 24px;
+  font-size: 15px;
+}
+
+.ant-btn-default:hover {
+  border-color: #002244 !important;
+  color: #002244 !important;
+  background: #f0f4f9;
+}
+
+.ant-btn-default:active {
+  border-color: #001a33 !important;
+  color: #001a33 !important;
+}
+
+.ant-btn-default:disabled {
+  border-color: #d9d9d9 !important;
+  color: #999999 !important;
+  background: #fafafa;
+}
+
+.ant-btn-link {
+  color: #003366 !important;
+  font-weight: 600;
+}
+
+.ant-btn-link:hover {
+  color: #002244 !important;
+}
+
+.ant-card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+}
+
+.ant-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  background: #f5f5f5;
+  font-weight: 600;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #fafafa;
+}
+
+.ant-input,
+.ant-input-number {
+  border-radius: 6px;
+  border-color: #d9d9d9;
+}
+
+.ant-input:focus,
+.ant-input-number:focus {
+  border-color: #003366;
+  box-shadow: 0 0 0 2px rgba(0, 51, 102, 0.1);
+}
+
+.ant-tag {
+  border-radius: 4px;
+}
+
+.ant-empty-description {
+  color: #999;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #667eea;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #764ba2;
+}
+

@@ -93,27 +93,27 @@ def procesar_direccion(df, carriles, intervalos, nombre):
             inicio_hora = pd.to_datetime(f"{fecha} {inicio}")
             fin_hora = pd.to_datetime(f"{fecha} {fin}")
 
-            marcas = pd.date_range(inicio_hora, fin_hora, freq="15min")
-            total_intervalo = 0
+            marcas = pd.date_range(inicio_hora, fin_hora, freq="15min", inclusive="left")
             for marca in marcas:
-                siguiente = marca + timedelta(minutes=15)
+                siguiente = min(marca + timedelta(minutes=15), fin_hora)
                 sub = grupo[(grupo["Time"] >= marca) & (grupo["Time"] < siguiente)]
 
                 if "#vehicles" in sub.columns:
-                    total_intervalo += sub["#vehicles"].sum()
+                    total_intervalo = sub["#vehicles"].sum()
                 else:
+                    total_intervalo = 0
                     for col in sub.columns:
                         if "vehicle" in col.lower():
-                            total_intervalo += sub[col].sum()
+                            total_intervalo = sub[col].sum()
                             break
 
-            resultados.append({
-                "Dirección": nombre,
-                "Fecha": str(fecha),
-                "Intervalo": f"{inicio}-{fin}",
-                "Carriles": ",".join(map(str, carriles)) if carriles else "all",
-                "Total_vehiculos": int(total_intervalo),
-            })
+                resultados.append({
+                    "Dirección": nombre,
+                    "Fecha": str(fecha),
+                    "Intervalo": f"{marca.strftime('%H:%M')}-{siguiente.strftime('%H:%M')}",
+                    "Carriles": ",".join(map(str, carriles)) if carriles else "all",
+                    "Total_vehiculos": int(total_intervalo),
+                })
 
     print_json_message(f"Procesados {len(resultados)} registros para {nombre}.", success=True)
     return pd.DataFrame(resultados)
@@ -124,14 +124,33 @@ def main():
     df = read_file_safely(input_path)
     df.columns = df.columns.str.strip()
 
+    rename_map = {}
+    if "Utc" in df.columns:
+        rename_map["Utc"] = "Time"
+    if "ZoneId" in df.columns:
+        rename_map["ZoneId"] = "Lane"
+    if "NumVeh" in df.columns:
+        rename_map["NumVeh"] = "#vehicles"
+    df = df.rename(columns=rename_map)
+
     if "Time" not in df.columns:
         print_json_message("Falta la columna 'Time' en el archivo.", error=True)
         print("[]")
         sys.exit(0)
 
     df["Time"] = pd.to_datetime(df["Time"], errors="coerce", dayfirst=True)
+    if hasattr(df["Time"].dt, "tz"):
+        df["Time"] = df["Time"].dt.tz_convert(None)
     df = df.dropna(subset=["Time"])
     df["Fecha"] = df["Time"].dt.date
+
+    if "Lane" in df.columns:
+        df["Lane"] = pd.to_numeric(df["Lane"], errors="coerce")
+        df = df.dropna(subset=["Lane"])
+        df["Lane"] = df["Lane"].astype(int)
+
+    if "#vehicles" in df.columns:
+        df["#vehicles"] = pd.to_numeric(df["#vehicles"], errors="coerce").fillna(0)
 
     if df.empty:
         print_json_message("El archivo no contiene datos válidos.", error=True)

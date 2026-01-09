@@ -1,3 +1,6 @@
+// Suppressir warning de React 19 en Ant Design
+import "./init-warnings.js";
+
 // Ant Design compatibility patch for React 19 - must be imported before any antd styles
 import "@ant-design/v5-patch-for-react-19";
 import { Geist, Geist_Mono } from "next/font/google";
