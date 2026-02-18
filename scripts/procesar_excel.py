@@ -1,7 +1,6 @@
 import sys
 import json
 import pandas as pd
-from datetime import datetime, timedelta
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
@@ -30,7 +29,7 @@ def parse_args():
     def parse_lanes(lanes_str):
         if lanes_str:
             try:
-                return [int(x.strip()) for x in lanes_str.split(",") if x.strip()]
+                return list(dict.fromkeys(int(x.strip()) for x in lanes_str.split(",") if x.strip()))
             except Exception:
                 print_json_message(f"Formato inválido de carriles: {lanes_str}", warning=True)
                 return []
@@ -88,32 +87,43 @@ def procesar_direccion(df, carriles, intervalos, nombre):
         print_json_message(f"No se encontraron datos para {nombre}.", warning=True)
         return pd.DataFrame()
 
+    if "#vehicles" not in df_dir.columns:
+        total_por_fila = pd.Series(0, index=df_dir.index, dtype="float64")
+        for col in df_dir.columns:
+            if "vehicle" in str(col).lower():
+                total_por_fila = pd.to_numeric(df_dir[col], errors="coerce").fillna(0)
+                break
+        df_dir = df_dir.copy()
+        df_dir["#vehicles"] = total_por_fila
+
     for fecha, grupo in df_dir.groupby("Fecha"):
-        for inicio, fin in (intervalos if intervalos else [("00:00", "23:59")]):
-            inicio_hora = pd.to_datetime(f"{fecha} {inicio}")
-            fin_hora = pd.to_datetime(f"{fecha} {fin}")
+        grupo_filtrado = grupo.copy()
 
-            marcas = pd.date_range(inicio_hora, fin_hora, freq="15min", inclusive="left")
-            for marca in marcas:
-                siguiente = min(marca + timedelta(minutes=15), fin_hora)
-                sub = grupo[(grupo["Time"] >= marca) & (grupo["Time"] < siguiente)]
+        if intervalos:
+            mascara = pd.Series(False, index=grupo_filtrado.index)
+            for inicio, fin in intervalos:
+                inicio_hora = pd.to_datetime(f"{fecha} {inicio}")
+                fin_hora = pd.to_datetime(f"{fecha} {fin}")
+                mascara = mascara | ((grupo_filtrado["Time"] >= inicio_hora) & (grupo_filtrado["Time"] < fin_hora))
+            grupo_filtrado = grupo_filtrado[mascara]
 
-                if "#vehicles" in sub.columns:
-                    total_intervalo = sub["#vehicles"].sum()
-                else:
-                    total_intervalo = 0
-                    for col in sub.columns:
-                        if "vehicle" in col.lower():
-                            total_intervalo = sub[col].sum()
-                            break
+        if grupo_filtrado.empty:
+            continue
 
-                resultados.append({
-                    "Dirección": nombre,
-                    "Fecha": str(fecha),
-                    "Intervalo": f"{marca.strftime('%H:%M')}-{siguiente.strftime('%H:%M')}",
-                    "Carriles": ",".join(map(str, carriles)) if carriles else "all",
-                    "Total_vehiculos": int(total_intervalo),
-                })
+        agg = (
+            grupo_filtrado.groupby("HoraMinuto", as_index=False)["#vehicles"]
+            .sum()
+            .sort_values("HoraMinuto")
+        )
+
+        for _, fila in agg.iterrows():
+            resultados.append({
+                "Dirección": nombre,
+                "Fecha": str(fecha),
+                "Intervalo": fila["HoraMinuto"],
+                "Carriles": ",".join(map(str, carriles)) if carriles else "all",
+                "Total_vehiculos": int(fila["#vehicles"]),
+            })
 
     print_json_message(f"Procesados {len(resultados)} registros para {nombre}.", success=True)
     return pd.DataFrame(resultados)
@@ -139,7 +149,7 @@ def main():
         sys.exit(0)
 
     df["Time"] = pd.to_datetime(df["Time"], errors="coerce", dayfirst=True)
-    if hasattr(df["Time"].dt, "tz"):
+    if isinstance(df["Time"].dtype, pd.DatetimeTZDtype):
         df["Time"] = df["Time"].dt.tz_convert(None)
     df = df.dropna(subset=["Time"])
     df["Fecha"] = df["Time"].dt.date
@@ -151,6 +161,27 @@ def main():
 
     if "#vehicles" in df.columns:
         df["#vehicles"] = pd.to_numeric(df["#vehicles"], errors="coerce").fillna(0)
+
+    df["HoraMinuto"] = df["Time"].dt.strftime("%H:%M")
+
+    if "#vehicles" not in df.columns:
+        total_por_fila = pd.Series(0, index=df.index, dtype="float64")
+        for col in df.columns:
+            if "vehicle" in str(col).lower():
+                total_por_fila = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                break
+        df["#vehicles"] = total_por_fila
+
+    before_dedup = len(df)
+    df = (
+        df.sort_values("#vehicles", ascending=False)
+        .drop_duplicates(subset=["Lane", "Fecha", "HoraMinuto"], keep="first")
+        .sort_values("Time")
+    )
+    print_json_message(
+        f"Deduplicación por Lane+Fecha+Hora aplicada: {before_dedup - len(df)} duplicados eliminados.",
+        success=True,
+    )
 
     if df.empty:
         print_json_message("El archivo no contiene datos válidos.", error=True)

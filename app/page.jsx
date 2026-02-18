@@ -72,10 +72,12 @@ export default function Home() {
     setResults([]);
 
     try {
-      const zonesArr = zones
-        .split(",")
-        .map((z) => parseInt(z.trim()))
-        .filter((z) => !isNaN(z));
+      const zonesArr = [...new Set(
+        zones
+          .split(",")
+          .map((z) => parseInt(z.trim(), 10))
+          .filter((z) => !isNaN(z))
+      )];
 
       if (zonesArr.length === 0) {
         notify("error", "Los ZoneId deben ser números separados por comas");
