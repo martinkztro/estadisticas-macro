@@ -110,17 +110,20 @@ def procesar_direccion(df, carriles, intervalos, nombre):
         if grupo_filtrado.empty:
             continue
 
+        grupo_filtrado = grupo_filtrado.copy()
+        grupo_filtrado["Hora"] = grupo_filtrado["Time"].dt.strftime("%H:00")
+
         agg = (
-            grupo_filtrado.groupby("HoraMinuto", as_index=False)["#vehicles"]
+            grupo_filtrado.groupby("Hora", as_index=False)["#vehicles"]
             .sum()
-            .sort_values("HoraMinuto")
+            .sort_values("Hora")
         )
 
         for _, fila in agg.iterrows():
             resultados.append({
                 "Dirección": nombre,
                 "Fecha": str(fecha),
-                "Intervalo": fila["HoraMinuto"],
+                "Intervalo": fila["Hora"],
                 "Carriles": ",".join(map(str, carriles)) if carriles else "all",
                 "Total_vehiculos": int(fila["#vehicles"]),
             })
