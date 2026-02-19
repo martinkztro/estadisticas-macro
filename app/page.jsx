@@ -34,6 +34,7 @@ export default function Home() {
   const [rangeEnd, setRangeEnd] = useState("23:59");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
+  const [selectedDates, setSelectedDates] = useState([]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
@@ -70,6 +71,7 @@ export default function Home() {
 
     setLoading(true);
     setResults([]);
+    setSelectedDates([]);
 
     try {
       const zonesArr = [...new Set(
@@ -102,7 +104,7 @@ export default function Home() {
   };
 
   const downloadExcel = async () => {
-    if (!results || results.length === 0) {
+    if (!filteredResults || filteredResults.length === 0) {
       notify("info", "No hay datos para exportar");
       return;
     }
@@ -131,7 +133,7 @@ export default function Home() {
             ref: "A1",
             headerRow: true,
             columns: headers.map((h) => ({ name: h })),
-            rows: results.map((r) => [r.Zona, r.Fecha, r.Intervalo, r.Total_vehiculos]),
+            rows: filteredResults.map((r) => [r.Zona, r.Fecha, r.Intervalo, r.Total_vehiculos]),
             style: { theme: "TableStyleMedium2" },
           });
 
@@ -193,9 +195,25 @@ export default function Home() {
     },
   ];
 
-  const totalVehicles = results.reduce((sum, r) => sum + r.Total_vehiculos, 0);
-  const uniqueDates = new Set(results.map((r) => r.Fecha)).size;
-  const uniqueZones = new Set(results.map((r) => r.Zona)).size;
+  const availableDates = [...new Set(results.map((r) => r.Fecha))].sort((a, b) => {
+    const [da, ma, ya] = a.split("/").map(Number);
+    const [db, mb, yb] = b.split("/").map(Number);
+    return new Date(ya, ma - 1, da) - new Date(yb, mb - 1, db);
+  });
+  const hasMultipleDates = availableDates.length > 1;
+  const allDatesValue = "__ALL_DATES__";
+  const dateOptions = [
+    { label: "Todas las fechas", value: allDatesValue },
+    ...availableDates.map((fecha) => ({ label: fecha, value: fecha })),
+  ];
+  const filteredResults =
+    selectedDates.length > 0 && !selectedDates.includes(allDatesValue)
+      ? results.filter((r) => selectedDates.includes(r.Fecha))
+      : results;
+
+  const totalVehicles = filteredResults.reduce((sum, r) => sum + r.Total_vehiculos, 0);
+  const uniqueDates = new Set(filteredResults.map((r) => r.Fecha)).size;
+  const uniqueZones = new Set(filteredResults.map((r) => r.Zona)).size;
 
   return (
     <>
@@ -313,6 +331,29 @@ export default function Home() {
           {/* Results Section */}
           {results.length > 0 && (
             <div className={styles.resultsSection}>
+              {hasMultipleDates && (
+                <Card className={styles.tableCard} style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <strong>Filtrar fechas:</strong>
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      style={{ minWidth: 280 }}
+                      placeholder="Todas las fechas"
+                      value={selectedDates}
+                      onChange={(values) => {
+                        if (values.includes(allDatesValue)) {
+                          setSelectedDates([allDatesValue]);
+                          return;
+                        }
+                        setSelectedDates(values);
+                      }}
+                      options={dateOptions}
+                    />
+                  </div>
+                </Card>
+              )}
+
               {/* Stats */}
               <div className={styles.statsGrid}>
                 <Card className={styles.statCard}>
@@ -342,7 +383,7 @@ export default function Home() {
                 <Card className={styles.statCard}>
                   <Statistic
                     title="Registros procesados"
-                    value={results.length}
+                    value={filteredResults.length}
                     prefix={<ClockCircleOutlined />}
                     valueStyle={{ color: "#722ed1" }}
                   />
@@ -354,7 +395,7 @@ export default function Home() {
                 <h3 style={{ marginBottom: "16px" }}>Detalle de aforos por hora</h3>
                 <Table
                   columns={tableColumns}
-                  dataSource={results}
+                  dataSource={filteredResults}
                   rowKey={(r, i) => `${r.Zona}-${r.Fecha}-${r.Intervalo}-${i}`}
                   pagination={uniqueZones > 1 ? { pageSize: 20, position: ["bottomCenter"] } : false}
                   scroll={{ x: 600 }}
