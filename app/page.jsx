@@ -29,12 +29,12 @@ import styles from "./page.module.css";
 export default function Home() {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
-  const [zones, setZones] = useState("");
   const [rangeStart, setRangeStart] = useState("00:00");
   const [rangeEnd, setRangeEnd] = useState("23:59");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [selectedDates, setSelectedDates] = useState([]);
+  const [selectedZones, setSelectedZones] = useState([]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
@@ -64,30 +64,14 @@ export default function Home() {
       notify("warning", "Por favor, selecciona un archivo");
       return;
     }
-    if (!zones.trim()) {
-      notify("warning", "Por favor, ingresa al menos un ZoneId");
-      return;
-    }
 
     setLoading(true);
     setResults([]);
     setSelectedDates([]);
+    setSelectedZones([]);
 
     try {
-      const zonesArr = [...new Set(
-        zones
-          .split(",")
-          .map((z) => parseInt(z.trim(), 10))
-          .filter((z) => !isNaN(z))
-      )];
-
-      if (zonesArr.length === 0) {
-        notify("error", "Los ZoneId deben ser números separados por comas");
-        setLoading(false);
-        return;
-      }
-
-      const data = await procesarArchivoCSV(file, [], zonesArr, [[rangeStart, rangeEnd]]);
+      const data = await procesarArchivoCSV(file, [], [], [[rangeStart, rangeEnd]]);
       setResults(data);
 
       if (data.length === 0) {
@@ -206,10 +190,22 @@ export default function Home() {
     { label: "Todas las fechas", value: allDatesValue },
     ...availableDates.map((fecha) => ({ label: fecha, value: fecha })),
   ];
-  const filteredResults =
+  const availableZones = [...new Set(results.map((r) => String(r.Zona)))].sort((a, b) => Number(a) - Number(b));
+  const hasMultipleZones = availableZones.length > 1;
+  const allZonesValue = "__ALL_ZONES__";
+  const zoneOptions = [
+    { label: "Todas las zonas", value: allZonesValue },
+    ...availableZones.map((zona) => ({ label: zona, value: zona })),
+  ];
+
+  const dateFilteredResults =
     selectedDates.length > 0 && !selectedDates.includes(allDatesValue)
       ? results.filter((r) => selectedDates.includes(r.Fecha))
       : results;
+  const filteredResults =
+    selectedZones.length > 0 && !selectedZones.includes(allZonesValue)
+      ? dateFilteredResults.filter((r) => selectedZones.includes(String(r.Zona)))
+      : dateFilteredResults;
 
   const totalVehicles = filteredResults.reduce((sum, r) => sum + r.Total_vehiculos, 0);
   const uniqueDates = new Set(filteredResults.map((r) => r.Fecha)).size;
@@ -263,20 +259,6 @@ export default function Home() {
                   {fileName && <span className={styles.fileName}>✓ {fileName}</span>}
                 </div>
 
-                {/* Zones Section */}
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>
-                    <EnvironmentOutlined /> ZoneId a analizar
-                  </label>
-                  <Input
-                    placeholder="Ej: 1,2,3,4,5"
-                    value={zones}
-                    onChange={(e) => setZones(e.target.value)}
-                    size="large"
-                  />
-                  <small style={{ color: "#999" }}>Ingresa los números de ZoneId separados por comas</small>
-                </div>
-
                 {/* Time Range */}
                 <div className={styles.timeRange}>
                   <div className={styles.formGroup}>
@@ -309,7 +291,7 @@ export default function Home() {
                   size="large"
                   onClick={handleProcessing}
                   loading={loading}
-                  disabled={!file || !zones.trim()}
+                  disabled={!file}
                   block
                 >
                   {loading ? "Procesando..." : "Analizar datos"}
@@ -331,25 +313,50 @@ export default function Home() {
           {/* Results Section */}
           {results.length > 0 && (
             <div className={styles.resultsSection}>
-              {hasMultipleDates && (
+              {(hasMultipleDates || hasMultipleZones) && (
                 <Card className={styles.tableCard} style={{ marginBottom: 16 }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                    <strong>Filtrar fechas:</strong>
-                    <Select
-                      mode="multiple"
-                      allowClear
-                      style={{ minWidth: 280 }}
-                      placeholder="Todas las fechas"
-                      value={selectedDates}
-                      onChange={(values) => {
-                        if (values.includes(allDatesValue)) {
-                          setSelectedDates([allDatesValue]);
-                          return;
-                        }
-                        setSelectedDates(values);
-                      }}
-                      options={dateOptions}
-                    />
+                    {hasMultipleDates && (
+                      <>
+                        <strong>Filtrar fechas:</strong>
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          style={{ minWidth: 280 }}
+                          placeholder="Todas las fechas"
+                          value={selectedDates}
+                          onChange={(values) => {
+                            if (values.includes(allDatesValue)) {
+                              setSelectedDates([allDatesValue]);
+                              return;
+                            }
+                            setSelectedDates(values);
+                          }}
+                          options={dateOptions}
+                        />
+                      </>
+                    )}
+
+                    {hasMultipleZones && (
+                      <>
+                        <strong>Filtrar zonas:</strong>
+                        <Select
+                          mode="multiple"
+                          allowClear
+                          style={{ minWidth: 280 }}
+                          placeholder="Todas las zonas"
+                          value={selectedZones}
+                          onChange={(values) => {
+                            if (values.includes(allZonesValue)) {
+                              setSelectedZones([allZonesValue]);
+                              return;
+                            }
+                            setSelectedZones(values);
+                          }}
+                          options={zoneOptions}
+                        />
+                      </>
+                    )}
                   </div>
                 </Card>
               )}
@@ -409,7 +416,7 @@ export default function Home() {
           {!loading && results.length === 0 && (
             <div className={styles.emptyState}>
               <Empty
-                description="Selecciona un archivo y zonas para comenzar"
+                description="Selecciona un archivo para comenzar"
                 style={{ marginTop: "60px" }}
               />
             </div>
