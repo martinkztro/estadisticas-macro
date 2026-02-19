@@ -23,7 +23,7 @@ import {
   CarOutlined,
   DatabaseOutlined,
 } from "@ant-design/icons";
-import { procesarArchivoCSV } from "@/lib/procesarExcelJS";
+import { extraerZoneIdsDisponibles, procesarArchivoCSV } from "@/lib/procesarExcelJS";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -35,6 +35,7 @@ export default function Home() {
   const [results, setResults] = useState([]);
   const [selectedDates, setSelectedDates] = useState([]);
   const [selectedZones, setSelectedZones] = useState([]);
+  const [zoneIdsArchivo, setZoneIdsArchivo] = useState([]);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
@@ -44,11 +45,22 @@ export default function Home() {
     messageApi[type](msg);
   };
 
-  const handleFileSelect = (event) => {
+  const handleFileSelect = async (event) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
       setFileName(selectedFile.name);
+      setResults([]);
+      setSelectedDates([]);
+      setSelectedZones([]);
+      try {
+        const zonas = await extraerZoneIdsDisponibles(selectedFile);
+        setZoneIdsArchivo(zonas);
+      } catch (err) {
+        console.error(err);
+        setZoneIdsArchivo([]);
+        notify("warning", "No se pudieron detectar ZoneId del archivo automáticamente");
+      }
     }
   };
 
@@ -190,7 +202,10 @@ export default function Home() {
     { label: "Todas las fechas", value: allDatesValue },
     ...availableDates.map((fecha) => ({ label: fecha, value: fecha })),
   ];
-  const availableZones = [...new Set(results.map((r) => String(r.Zona)))].sort((a, b) => Number(a) - Number(b));
+  const availableZones =
+    zoneIdsArchivo.length > 0
+      ? zoneIdsArchivo.map(String)
+      : [...new Set(results.map((r) => String(r.Zona)))].sort((a, b) => Number(a) - Number(b));
   const hasMultipleZones = availableZones.length > 1;
   const allZonesValue = "__ALL_ZONES__";
   const zoneOptions = [
