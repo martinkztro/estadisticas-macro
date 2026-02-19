@@ -165,6 +165,18 @@ def main():
     if "#vehicles" in df.columns:
         df["#vehicles"] = pd.to_numeric(df["#vehicles"], errors="coerce").fillna(0)
 
+    class_col = None
+    for candidate in ["Class", "class", "VehicleClass", "vehicleClass"]:
+        if candidate in df.columns:
+            class_col = candidate
+            break
+
+    if class_col is None:
+        df["Class"] = "_NO_CLASS_"
+        class_col = "Class"
+    else:
+        df[class_col] = df[class_col].fillna("_NO_CLASS_").astype(str).str.strip()
+
     df["HoraMinuto"] = df["Time"].dt.strftime("%H:%M")
 
     if "#vehicles" not in df.columns:
@@ -178,11 +190,11 @@ def main():
     before_dedup = len(df)
     df = (
         df.sort_values("#vehicles", ascending=False)
-        .drop_duplicates(subset=["Lane", "Fecha", "HoraMinuto"], keep="first")
+        .drop_duplicates(subset=["Lane", "Fecha", "HoraMinuto", class_col], keep="first")
         .sort_values("Time")
     )
     print_json_message(
-        f"Deduplicación por Lane+Fecha+Hora aplicada: {before_dedup - len(df)} duplicados eliminados.",
+        f"Deduplicación por Lane+Fecha+Hora+Class aplicada: {before_dedup - len(df)} duplicados eliminados.",
         success=True,
     )
 
