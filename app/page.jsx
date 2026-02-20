@@ -22,8 +22,15 @@ import {
   EnvironmentOutlined,
   CarOutlined,
   DatabaseOutlined,
+  CloseOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
-import { extraerZoneIdsDisponibles, procesarArchivoCSV } from "@/lib/procesarExcelJS";
+import {
+  extraerColumnasDisponibles,
+  extraerZoneIdsDisponibles,
+  procesarArchivoCSV,
+  sugerirMapeoColumnas,
+} from "@/lib/procesarExcelJS";
 import styles from "./page.module.css";
 
 export default function Home() {
@@ -36,6 +43,9 @@ export default function Home() {
   const [selectedDates, setSelectedDates] = useState([]);
   const [selectedZones, setSelectedZones] = useState([]);
   const [zoneIdsArchivo, setZoneIdsArchivo] = useState([]);
+  const [availableColumns, setAvailableColumns] = useState([]);
+  const [columnMap, setColumnMap] = useState({ utc: "", zoneId: "", numVeh: "" });
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [messageApi, contextHolder] = message.useMessage();
@@ -54,12 +64,19 @@ export default function Home() {
       setSelectedDates([]);
       setSelectedZones([]);
       try {
-        const zonas = await extraerZoneIdsDisponibles(selectedFile);
+        const columnas = await extraerColumnasDisponibles(selectedFile);
+        const sugerido = sugerirMapeoColumnas(columnas);
+        setAvailableColumns(columnas);
+        setColumnMap(sugerido);
+
+        const zonas = await extraerZoneIdsDisponibles(selectedFile, sugerido);
         setZoneIdsArchivo(zonas);
       } catch (err) {
         console.error(err);
+        setAvailableColumns([]);
+        setColumnMap({ utc: "", zoneId: "", numVeh: "" });
         setZoneIdsArchivo([]);
-        notify("warning", "No se pudieron detectar ZoneId del archivo automáticamente");
+        notify("warning", "No se pudieron detectar columnas del archivo automáticamente");
       }
     }
   };
@@ -67,7 +84,39 @@ export default function Home() {
   const handleFileClick = () => {
     const fileInput = document.getElementById("file-upload");
     if (fileInput) {
+      fileInput.value = "";
       fileInput.click();
+    }
+  };
+
+  const handleClearFile = () => {
+    setFile(null);
+    setFileName("");
+    setResults([]);
+    setSelectedDates([]);
+    setSelectedZones([]);
+    setZoneIdsArchivo([]);
+    setAvailableColumns([]);
+    setColumnMap({ utc: "", zoneId: "", numVeh: "" });
+    setIsMappingModalOpen(false);
+
+    const fileInput = document.getElementById("file-upload");
+    if (fileInput) {
+      fileInput.value = "";
+    }
+  };
+
+  const handleApplyColumnMapping = async () => {
+    if (!file) return;
+    try {
+      const zonas = await extraerZoneIdsDisponibles(file, columnMap);
+      setZoneIdsArchivo(zonas);
+      setSelectedZones([]);
+      setIsMappingModalOpen(false);
+      notify("success", "Mapeo de columnas actualizado");
+    } catch (err) {
+      console.error(err);
+      notify("error", "No se pudo aplicar el mapeo de columnas");
     }
   };
 
@@ -83,7 +132,7 @@ export default function Home() {
     setSelectedZones([]);
 
     try {
-      const data = await procesarArchivoCSV(file, [], [], [[rangeStart, rangeEnd]]);
+      const data = await procesarArchivoCSV(file, [], [], [[rangeStart, rangeEnd]], columnMap);
       setResults(data);
 
       if (data.length === 0) {
@@ -224,7 +273,7 @@ export default function Home() {
 
   const totalVehicles = filteredResults.reduce((sum, r) => sum + r.Total_vehiculos, 0);
   const uniqueDates = new Set(filteredResults.map((r) => r.Fecha)).size;
-  const uniqueZones = new Set(filteredResults.map((r) => r.Zona)).size;
+  const uniqueZones = availableZones.length;
 
   return (
     <>
@@ -238,7 +287,7 @@ export default function Home() {
             <div className={styles.titleSection}>
               <CarOutlined className={styles.titleIcon} />
               <div>
-                <h1>Análisis de Tráfico Vehicular</h1>
+                <h1>Sistema de Aforo Vehicular</h1>
                 <p>Sistema de procesamiento y análisis de datos de aforos por zona horaria</p>
               </div>
             </div>
@@ -271,7 +320,29 @@ export default function Home() {
                       {fileName || "Seleccionar archivo"}
                     </Button>
                   </div>
-                  {fileName && <span className={styles.fileName}>✓ {fileName}</span>}
+                  {fileName && (
+                    <div className={styles.fileMetaRow}>
+                      <div className={styles.fileMetaLeft}>
+                        <span className={styles.fileName}>✓ {fileName}</span>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CloseOutlined />}
+                          onClick={handleClearFile}
+                          aria-label="Quitar archivo actual"
+                        />
+                      </div>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SettingOutlined />}
+                        onClick={() => setIsMappingModalOpen(true)}
+                        aria-label="Configurar mapeo de columnas"
+                      >
+                        Mapear columnas
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Time Range */}
@@ -396,7 +467,7 @@ export default function Home() {
                 </Card>
                 <Card className={styles.statCard}>
                   <Statistic
-                    title="Zonas monitoreadas"
+                    title="Zonas en archivo"
                     value={uniqueZones}
                     prefix={<EnvironmentOutlined />}
                     valueStyle={{ color: "#faad14" }}
@@ -437,6 +508,10 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        <footer className={styles.footer}>
+          © 2026 Martin Castro. Todos los derechos reservados.
+        </footer>
       </div>
 
       {/* Detail Drawer */}
@@ -473,6 +548,53 @@ export default function Home() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        title="Mapeo de columnas"
+        open={isMappingModalOpen}
+        onCancel={() => setIsMappingModalOpen(false)}
+        onOk={handleApplyColumnMapping}
+        okText="Aplicar"
+        cancelText="Cancelar"
+      >
+        <div className={styles.mappingGrid}>
+          <div className={styles.formGroup}>
+            <label className={styles.label}>Fecha/Hora</label>
+            <Select
+              showSearch
+              allowClear
+              placeholder="Selecciona columna"
+              value={columnMap.utc || undefined}
+              onChange={(value) => setColumnMap((prev) => ({ ...prev, utc: value || "" }))}
+              options={availableColumns.map((c) => ({ label: c, value: c }))}
+            />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>ZoneId</label>
+            <Select
+              showSearch
+              allowClear
+              placeholder="Selecciona columna"
+              value={columnMap.zoneId || undefined}
+              onChange={(value) => setColumnMap((prev) => ({ ...prev, zoneId: value || "" }))}
+              options={availableColumns.map((c) => ({ label: c, value: c }))}
+            />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label className={styles.label}>Vehículos</label>
+            <Select
+              showSearch
+              allowClear
+              placeholder="Selecciona columna"
+              value={columnMap.numVeh || undefined}
+              onChange={(value) => setColumnMap((prev) => ({ ...prev, numVeh: value || "" }))}
+              options={availableColumns.map((c) => ({ label: c, value: c }))}
+            />
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

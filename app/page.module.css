@@ -82,10 +82,34 @@
   position: relative;
 }
 
+.fileMetaRow {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fileMetaLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .fileName {
   display: block;
   font-size: 12px;
   color: #52c41a;
+}
+
+.fileMetaRow :global(.ant-btn) {
+  padding-inline: 2px;
+}
+
+.mappingGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
   margin-top: 4px;
 }
 
@@ -182,6 +206,15 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+.footer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 20px 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .titleSection {
@@ -199,6 +232,10 @@
 
   .mainContent {
     padding: 20px 16px;
+  }
+
+  .footer {
+    padding: 10px 16px 16px;
   }
 
   .formGrid {
@@ -239,5 +276,9 @@
 
   .mainContent {
     padding: 16px 12px;
+  }
+
+  .footer {
+    padding: 10px 12px 14px;
   }
 }
