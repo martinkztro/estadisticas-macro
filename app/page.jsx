@@ -281,7 +281,6 @@ export default function Home() {
       {modalContextHolder}
 
       <div className={styles.container}>
-        {/* Header */}
         <div className={styles.header}>
           <div className={styles.headerContent}>
             <div className={styles.titleSection}>
@@ -294,12 +293,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Main Content */}
         <div className={styles.mainContent}>
           <div className={styles.formSection}>
             <Card className={styles.formCard}>
               <div className={styles.formGrid}>
-                {/* Upload Section */}
                 <div className={styles.formGroup}>
                   <label className={styles.label}>
                     <UploadOutlined /> Archivo de datos (CSV/XLSX)
@@ -345,7 +342,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* Time Range */}
                 <div className={styles.timeRange}>
                   <div className={styles.formGroup}>
                     <label className={styles.label}>
@@ -370,7 +366,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className={styles.actions}>
                 <Button
                   type="primary"
@@ -396,7 +391,6 @@ export default function Home() {
             </Card>
           </div>
 
-          {/* Results Section */}
           {results.length > 0 && (
             <div className={styles.resultsSection}>
               {(hasMultipleDates || hasMultipleZones) && (
@@ -447,7 +441,6 @@ export default function Home() {
                 </Card>
               )}
 
-              {/* Stats */}
               <div className={styles.statsGrid}>
                 <Card className={styles.statCard}>
                   <Statistic
@@ -483,7 +476,6 @@ export default function Home() {
                 </Card>
               </div>
 
-              {/* Table */}
               <Card className={styles.tableCard}>
                 <h3 style={{ marginBottom: "16px" }}>Detalle de aforos por hora</h3>
                 <Table
@@ -498,7 +490,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Empty State */}
           {!loading && results.length === 0 && (
             <div className={styles.emptyState}>
               <Empty
@@ -514,7 +505,6 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* Detail Drawer */}
       <Drawer
         title="Detalle del registro"
         onClose={() => setDrawerVisible(false)}
